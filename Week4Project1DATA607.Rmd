@@ -1,0 +1,206 @@
+---
+title: "Week4Project1DATA607"
+author: "Banu Boopalan"
+date: "9/22/2019"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
+  ioslides_presentation: default
+  pdf_document: default
+  slidy_presentation: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+#Install Downloader
+library(downloader)
+library(stringr)
+#Install Reshape pacakge 
+#Start building data needed to calculate final average prechess rating
+library(reshape)
+library(tibble)
+library(dplyr)
+library(knitr)
+#Install KableExtra package and use that
+library(kableExtra)
+```
+
+## Section1:PROJECT 1: Read Chess Rating dataset and create a file to write to CSV. First Read file from my GITHUB url.
+
+Read dataset from url on github
+
+```{r}
+myurl <- "https://raw.githubusercontent.com/BanuB/Week4AssignmentDATA607/master/tournamentinfo.txt"
+x = read.csv(file=myurl)
+filename <- "tournamenttxtfile.txt"
+
+downloader::download(myurl, filename)
+df <- readLines(filename)
+
+myconn <- file(filename,open="r")
+myfiledata <- readLines(filename,warn = FALSE)
+close(myconn)
+
+head(myfiledata)
+ncol(myfiledata)
+```
+
+## Section2:Subset
+Final 2 Subsets to extract and separate and join back to get only 1 row for each player
+
+```{r}
+#Final 2 Subsets to extract and separate and join back to get only 1 row for each player
+#------------------------------------------------------------------------
+
+subset1 <- myfiledata[str_detect(myfiledata,"([0-9]{1}[|])")]
+subset1
+
+
+subset2 <- myfiledata[str_detect(myfiledata,"([:]{1})")]
+subset2
+
+```
+
+## Section3:CBIND
+Start with this dataset which is a cbind of rows for each player in 1 row
+
+```{r}
+#--------------------------------------------------------------------------
+#Start with this dataset which is a cbind of rows for each player in 1 row
+
+df1 <- data.frame(subset1)
+df2 <- data.frame(subset2)
+df3 <- cbind (df1, df2)
+str(df3)
+df3
+```
+
+## Section4:String Locate
+String locate to locate positions to extract our subtring to build the final players dataframe. Using only 1st row since we only need that to determine positions for certain field and rest of the rows will follow the same positions to extract from
+
+```{r}
+
+str_locate_all(df3$subset1[1],"\\b[:alnum:]+\\b")
+str_locate_all(df3$subset2[1],"\\b[:alnum:]+\\b")
+
+```
+
+## Section5:First Main chess dataframe to build final columns to display. Convert player_num and player_prerating, total_points to decimal
+
+
+```{r}
+#------------------------------------------------------------------------------------------------------------------------
+#First Main chess dataframe to build final columns to display. Convert player_num and player_prerating, total_points to decimal
+
+startnew <- data.frame(player_num = type.convert((substr(df3$subset1,4,5)),na.strings = "NA", as.is = FALSE, dec = "."), 
+                       player_name = paste(c(str_extract(df3$subset1,"\\b([A-Z]+)\\s*([A-Z]+)\\s*([A-Z]+)\\s*([A-Z]+)\\b"))), 
+                       State = substr(df3$subset2,4,5),
+                       #                       total_points = paste(c(str_extract(df3$subset1,"(\\d\\.)[0-9]"))),
+                       total_points = type.convert(str_extract(df3$subset1,"(\\d\\.)[0-9]"), na.strings = "NA", as.is = FALSE, dec= "."),
+                       player_prerating = type.convert((substr(df3$subset2,23,26)),na.strings = "NA", as.is = FALSE, dec = ".")) 
+
+startnew
+str(startnew)
+
+
+```
+
+## Section6:Use Melt of melt.list of opponentnumber to get player number with the corresponding opponent number
+
+
+```{r}
+#------------------------------------------------------------------------------------------------------------------------
+#melt list with opponentnumber to get player with the opponentnumber and put that in a dataframe
+opponentnum <-  type.convert(str_extract_all(df3$subset1,"\\b\\s+([0-9]+)\\b"),na.strings = "NA", as.is = FALSE, dec = ".")
+opponentnum
+str(opponentnum)
+df <- melt(opponentnum)
+
+
+```
+
+## Section7:View melted dataset and reassign column names for merging later
+
+
+```{r}
+#--------------------------------------------------------------------------------------------------------------------------------
+#view melted dataframe and reassign column names to a different name
+df <- setNames(df,c("oppo_num","player_num"))
+str(df)
+df
+
+```
+
+## Section8:Merge melted dataframes by player_number to get player number along with the opponents played
+
+
+```{r}
+#--------------------------------------------------------------------------------------------------------------------------------
+#Merge melted dataframe with dataframe below by player_num to get rows of player with opponent number. Here any games with 
+#missing opponent number is not kept. For instance the Melt only reads in the 5 games that were played for player #16 since the other 2 games don't have a opponent # listed in the 
+#string that was read in for this player
+df2 <- data.frame(player_num = type.convert(substr(df3$subset1,4,5),na.strings = "NA", as.is = FALSE, dec = "."), 
+                  player_name = paste(c(str_extract(df3$subset1,"\\b([A-Z]+)\\s*([A-Z]+)\\s*([A-Z]+)\\s*([A-Z]+)\\b"))),
+                  player_prerating = type.convert((substr(df3$subset2,23,26)),na.strings = "NA", as.is = FALSE, dec = "."))
+str(df2)
+df2
+
+df4 <- merge(df2,df,by ="player_num")
+head(df4)
+str(df4)
+
+```
+
+
+## Section9:Merge again and order final df8 dataset by player number for group_by and aggregating rows
+
+
+```{r}
+#--------------------------------------------------------------------------------------------------------------------------------
+#new dataset to reassign just player prerating and player number as opponent prerating and opponent playernumber
+df6 <- data.frame(oppo_num = df2$player_num, oppo_prerating = df2$player_prerating)
+df6 
+
+#--------------------------------------------------------------------------------------------------------------------------------
+#merge to get oppo prerating
+df7 <- merge(df4, df6, by = "oppo_num")
+df7
+str(df7)
+
+#--------------------------------------------------------------------------------------------------------------------------------
+#order the df8 dataset by player# so we can group to find average oppponent prechess rating
+df8 <- df7[
+  order( df7[,2] ),
+  ]
+df8
+
+```
+
+## Section10:Aggregate rows and group by player_num to get average opponent pre chess rating
+
+```{r}
+chessrating_df <- df8 %>% group_by(player_num) %>% summarize(avg_prechess_rating = mean(oppo_prerating))
+str(chessrating_df)
+chessrating_df
+
+```
+
+## Section11:Final merge to get all columns  and write out kable table
+
+```{r}
+#merge back to main dataset to get the finaldataset by player_number with all the fields
+finaldf <- merge(startnew, chessrating_df, by = "player_num")
+finaldf
+finaldf %>% kable() %>% kable_styling()
+```
+
+## Section12:Write final CSV files
+
+```{r}
+#Write file to a CSV file
+write.csv(finaldf, "Banufinalchessratingdataset.csv", row.names = FALSE)
+write.csv(df8, "Banuplayerrowswithopponentrating.csv", row.names = FALSE)
+```
+
